@@ -1,0 +1,52 @@
+name: "Deca Agent Job"
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        description: "Deca agent job id"
+      task:
+        required: true
+        description: "Task for opencode"
+      api_base_url:
+        required: true
+        description: "API base URL"
+      deca_api_key:
+        required: true
+        description: "Deca API key for the agent"
+      model:
+        required: false
+        description: "Model to use"
+        default: "deca-2.5-ultra"
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+
+      - name: Checkout harness action
+        uses: actions/checkout@v4
+        with:
+          repository: 'GenLabsAI/opencode-action-harness'
+          path: '.deca-harness'
+          # This allows us to use the action defined in the repo locally
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run agent harness
+        uses: ./.deca-harness
+        with:
+          job_id: ${{ github.event.inputs.job_id }}
+          task: ${{ github.event.inputs.task }}
+          api_base_url: ${{ github.event.inputs.api_base_url }}
+          worker_token: ${{ secrets.DECA_WORKER_TOKEN }}
+          deca_api_key: ${{ github.event.inputs.deca_api_key }}
+          model: ${{ github.event.inputs.model }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

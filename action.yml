@@ -1,0 +1,41 @@
+name: "Run opencode agent"
+description: "Runs opencode for a task and streams JSON events to the Deca Agent Jobs API"
+inputs:
+  job_id:
+    required: true
+    description: "Deca agent job id"
+  task:
+    required: true
+    description: "Task for opencode"
+  api_base_url:
+    required: true
+    description: "API base URL"
+  worker_token:
+    required: true
+    description: "Worker callback token"
+  deca_api_key:
+    required: true
+    description: "Deca API key for the agent"
+  model:
+    required: false
+    description: "Model to use"
+    default: "deca-2.5-ultra"
+runs:
+  using: "composite"
+  steps:
+    - name: Install opencode
+      shell: bash
+      run: |
+        if ! command -v opencode >/dev/null 2>&1; then
+          npm install -g opencode-ai
+        fi
+    - name: Run opencode agent
+      shell: bash
+      env:
+        DECA_AGENT_JOB_ID: ${{ inputs.job_id }}
+        DECA_AGENT_TASK: ${{ inputs.task }}
+        DECA_AGENT_API_BASE_URL: ${{ inputs.api_base_url }}
+        DECA_AGENT_WORKER_TOKEN: ${{ inputs.worker_token }}
+        DECA_AGENT_MODEL: ${{ inputs.model }}
+        DECA_API_KEY: ${{ inputs.deca_api_key }}
+      run: python "$GITHUB_ACTION_PATH/runner.py"
