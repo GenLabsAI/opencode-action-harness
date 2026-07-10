@@ -128,7 +128,15 @@ def event_streamer(api_base_url: str, job_id: str, token: str) -> None:
                     try:
                         data = json.loads(data_str)
                         # Pass events back to deca API
-                        event_type = data.get("type", "unknown")
+                        event_type = "unknown"
+                        if "payload" in data and isinstance(data["payload"], dict):
+                            event_type = data["payload"].get("type", "unknown")
+                        elif "type" in data:
+                            event_type = data["type"]
+                        
+                        if event_type in ("server.heartbeat", "plugin.added"):
+                            continue
+                            
                         emit(api_base_url, job_id, token, event_type, json.dumps(data), data)
                     except Exception as e:
                         pass
@@ -205,23 +213,40 @@ def main() -> int:
         threading.Thread(target=command_poller, args=(api_base_url, job_id, token, session_id), daemon=True).start()
 
         # Prompt agent async
-        post_json(f"http://localhost:4096/session/{session_id}/prompt_async", None, {
+        prompt_response = post_json(f"http://localhost:4096/session/{session_id}/prompt_async", None, {
             "parts": [{"type": "text", "text": task}],
         })
+        emit(api_base_url, job_id, token, "debug", "prompt_async accepted", prompt_response)
 
         # Wait for the task to finish by checking session status
-        while True:
+        status = "running"
+        idle_seconds = 0
+        last_state = ""
+        while time.time() - started_at < 600:
             try:
                 req = urllib.request.Request(f"http://localhost:4096/session/{session_id}")
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     state = json.loads(resp.read().decode("utf-8"))
-                    status = state.get("status")
+                    state_text = json.dumps(state, sort_keys=True)
+                    if state_text != last_state:
+                        emit(api_base_url, job_id, token, "debug", "session state changed", state)
+                        last_state = state_text
+                        idle_seconds = 0
+                    else:
+                        idle_seconds += 2
+                    status = state.get("status") or state.get("state") or status
                     if status in ["completed", "failed", "aborted", "error", "resolved", "rejected"]:
+                        break
+                    if idle_seconds >= 120:
+                        status = "idle_timeout"
                         break
             except Exception as e:
                 print(f"Error checking status: {e}", file=sys.stderr)
+                status = "status_check_error"
                 break
             time.sleep(2)
+        else:
+            status = "timeout"
 
         elapsed = time.time() - started_at
         result = {"elapsed_seconds": elapsed, "final_status": status}

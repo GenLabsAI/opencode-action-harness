@@ -63,7 +63,8 @@ def test_command_poller_parses_prompt_and_abort(mock_post_json):
     with patch("runner.urllib.request.urlopen", return_value=mock_response):
         runner.command_poller("http://test.com", "job1", "token", "sess1")
 
-    assert mock_post_json.call_count == 2
+    # 2 calls for actions (prompt/abort) + 2 calls for acking
+    assert mock_post_json.call_count == 4
     # First call: prompt
     args1, _ = mock_post_json.call_args_list[0]
     assert args1[0] == "http://localhost:4096/session/sess1/prompt_async"
