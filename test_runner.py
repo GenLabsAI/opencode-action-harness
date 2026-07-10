@@ -69,9 +69,9 @@ def test_command_poller_parses_prompt_and_abort(mock_post_json):
     args1, _ = mock_post_json.call_args_list[0]
     assert args1[0] == "http://localhost:4096/session/sess1/prompt_async"
     assert args1[2] == {"parts": [{"type": "text", "text": "test"}]}
-    # Second call: abort
-    args2, _ = mock_post_json.call_args_list[1]
-    assert args2[0] == "http://localhost:4096/session/sess1/abort"
+    # Third call: abort
+    args3, _ = mock_post_json.call_args_list[2]
+    assert args3[0] == "http://localhost:4096/session/sess1/abort"
 
 
 @patch("runner.emit")
