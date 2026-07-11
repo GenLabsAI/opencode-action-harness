@@ -211,9 +211,21 @@ def main() -> int:
         if not ready:
             raise RuntimeError("opencode serve failed to start on port 4096")
 
-        # Create session
-        session_data = post_json("http://localhost:4096/session", None, {})
-        session_id = session_data["id"]
+        # Find or create session
+        sessions = []
+        try:
+            req = urllib.request.Request("http://localhost:4096/session")
+            with urllib.request.urlopen(req) as resp:
+                sessions = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            pass
+        
+        if sessions and len(sessions) > 0:
+            session_id = sessions[0]["id"]
+            print(f"Reusing existing session {session_id}", file=sys.stderr)
+        else:
+            session_data = post_json("http://localhost:4096/session", None, {})
+            session_id = session_data["id"]
 
         completion_event = threading.Event()
         # Start event streamer

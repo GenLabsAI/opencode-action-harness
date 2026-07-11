@@ -4,6 +4,9 @@ inputs:
   job_id:
     required: true
     description: "Deca agent job id"
+  chat_session_id:
+    required: false
+    description: "Deca chat session id"
   task:
     required: true
     description: "Task for opencode"
@@ -33,6 +36,7 @@ runs:
       shell: bash
       env:
         DECA_AGENT_JOB_ID: ${{ inputs.job_id }}
+        DECA_AGENT_CHAT_SESSION_ID: ${{ inputs.chat_session_id }}
         DECA_AGENT_TASK: ${{ inputs.task }}
         DECA_AGENT_API_BASE_URL: ${{ inputs.api_base_url }}
         DECA_AGENT_WORKER_TOKEN: ${{ inputs.worker_token }}
