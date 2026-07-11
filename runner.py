@@ -114,7 +114,7 @@ def command_poller(api_base_url: str, job_id: str, token: str, session_id: str) 
         print(f"Command poller error: {e}", file=sys.stderr)
 
 
-def event_streamer(api_base_url: str, job_id: str, token: str) -> None:
+def event_streamer(api_base_url: str, job_id: str, token: str, completion_event: threading.Event) -> None:
     url = "http://localhost:4096/global/event"
     request = urllib.request.Request(url, headers={"Accept": "text/event-stream"})
     try:
@@ -138,6 +138,15 @@ def event_streamer(api_base_url: str, job_id: str, token: str) -> None:
                             continue
                             
                         emit(api_base_url, job_id, token, event_type, json.dumps(data), data)
+                        
+                        # Detect completion
+                        if event_type in ("session.idle", "session.completed", "session.aborted", "session.failed", "session.error"):
+                            completion_event.set()
+                        elif event_type in ("message.updated", "message.part.updated"):
+                            # For some clients, message part update marks the end
+                            payload = data.get("payload", {})
+                            if payload.get("finish") == "stop" or payload.get("part", {}).get("finish") == "stop":
+                                completion_event.set()
                     except Exception as e:
                         pass
     except Exception as e:
@@ -206,8 +215,9 @@ def main() -> int:
         session_data = post_json("http://localhost:4096/session", None, {})
         session_id = session_data["id"]
 
+        completion_event = threading.Event()
         # Start event streamer
-        threading.Thread(target=event_streamer, args=(api_base_url, job_id, token), daemon=True).start()
+        threading.Thread(target=event_streamer, args=(api_base_url, job_id, token, completion_event), daemon=True).start()
 
         # Start command poller
         threading.Thread(target=command_poller, args=(api_base_url, job_id, token, session_id), daemon=True).start()
@@ -223,6 +233,10 @@ def main() -> int:
         idle_seconds = 0
         last_state = ""
         while time.time() - started_at < 600:
+            if completion_event.wait(timeout=2):
+                status = "completed"
+                break
+                
             try:
                 req = urllib.request.Request(f"http://localhost:4096/session/{session_id}")
                 with urllib.request.urlopen(req, timeout=5) as resp:
@@ -244,7 +258,6 @@ def main() -> int:
                 print(f"Error checking status: {e}", file=sys.stderr)
                 status = "status_check_error"
                 break
-            time.sleep(2)
         else:
             status = "timeout"
 

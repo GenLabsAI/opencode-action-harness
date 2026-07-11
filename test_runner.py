@@ -82,13 +82,46 @@ def test_event_streamer_forwards_events(mock_emit):
     ]
     mock_response.__enter__.return_value = mock_response
     
+    mock_event = threading.Event()
     with patch("runner.urllib.request.urlopen", return_value=mock_response):
-        runner.event_streamer("http://test.com", "job1", "token")
+        runner.event_streamer("http://test.com", "job1", "token", mock_event)
 
     assert mock_emit.call_count == 1
     args, _ = mock_emit.call_args
     assert args[3] == "message"
     assert args[5] == {"type": "message", "content": "hello"}
+    assert not mock_event.is_set()
+
+
+@patch("runner.emit")
+def test_event_streamer_detects_message_finish(mock_emit):
+    mock_response = MagicMock()
+    mock_response.__iter__.return_value = [
+        b"data: {\"payload\": {\"type\": \"message.updated\", \"finish\": \"stop\"}}\n"
+    ]
+    mock_response.__enter__.return_value = mock_response
+
+    mock_event = threading.Event()
+    with patch("runner.urllib.request.urlopen", return_value=mock_response):
+        runner.event_streamer("http://test.com", "job1", "token", mock_event)
+
+    assert mock_event.is_set()
+
+
+@patch("runner.emit")
+def test_event_streamer_detects_session_idle(mock_emit):
+    mock_response = MagicMock()
+    mock_response.__iter__.return_value = [
+        b"data: {\"payload\": {\"type\": \"session.idle\"}}\n"
+    ]
+    mock_response.__enter__.return_value = mock_response
+
+    mock_event = threading.Event()
+    with patch("runner.urllib.request.urlopen", return_value=mock_response):
+        runner.event_streamer("http://test.com", "job1", "token", mock_event)
+
+    assert mock_event.is_set()
+
 
 @patch("runner.urllib.request.urlopen")
 @patch("runner.subprocess.Popen")
