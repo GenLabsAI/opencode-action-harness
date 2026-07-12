@@ -35,6 +35,9 @@ fi
 
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
+# Decrypt DECA_API_KEY
+export DECA_API_KEY_DECRYPTED="$(echo "$DECA_API_KEY" | openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 -pass env:DECA_AGENT_STATE_PASSWORD)"
+
 set +e
 docker run --name "$CONTAINER" \
   -e DECA_AGENT_JOB_ID \
@@ -43,12 +46,18 @@ docker run --name "$CONTAINER" \
   -e DECA_AGENT_API_BASE_URL \
   -e DECA_AGENT_WORKER_TOKEN \
   -e DECA_AGENT_MODEL \
-  -e DECA_API_KEY \
+  -e DECA_API_KEY="$DECA_API_KEY_DECRYPTED" \
   -w /agent/workspace \
   "$IMAGE" \
   python3 /agent/harness/runner.py
 STATUS=$?
 set -e
+
+# Revoke DECA_API_KEY on terminal job completion
+if [ "$STATUS" -eq 0 ] || [ "$STATUS" -eq 1 ]; then
+  curl -s -X DELETE "${DECA_AGENT_API_BASE_URL%/}/deca-agents/v1/jobs/${DECA_AGENT_JOB_ID}/runner_key" \
+    -H "X-Worker-Token: ${DECA_AGENT_WORKER_TOKEN}" >/dev/null || true
+fi
 
 docker commit "$CONTAINER" "$STATE_IMAGE"
 docker save "$STATE_IMAGE" -o "$SNAPSHOT_DIR/agent-state.tar"
