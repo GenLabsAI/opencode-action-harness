@@ -1,5 +1,8 @@
 name: "Deca Agent Job"
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -26,10 +29,12 @@ on:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
+    concurrency:
+      group: deca-agent-state-${{ github.event.inputs.chat_session_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
     steps:
-      - name: Checkout target repo
-        uses: actions/checkout@v4
-
       - name: Checkout harness action
         uses: actions/checkout@v4
         with:
@@ -50,4 +55,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
-          SNAPSHOT_REPO: GenLabsAI/opencode-action-harness-state
+          SNAPSHOT_REPO: ${{ github.repository }}
