@@ -37,21 +37,6 @@ jobs:
           path: '.deca-harness'
           # This allows us to use the action defined in the repo locally
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Restore agent state
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .
-            ~/.local/share/opencode
-          key: deca-agent-state-${{ github.event.inputs.chat_session_id }}-${{ github.run_id }}
-          restore-keys: |
-            deca-agent-state-${{ github.event.inputs.chat_session_id }}-
-
       - name: Run agent harness
         uses: ./.deca-harness
         with:
@@ -64,12 +49,5 @@ jobs:
           model: ${{ github.event.inputs.model }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Save agent state
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .
-            ~/.local/share/opencode
-          key: deca-agent-state-${{ github.event.inputs.chat_session_id }}-${{ github.run_id }}
+          DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
+          SNAPSHOT_REPO: GenLabsAI/opencode-action-harness-state

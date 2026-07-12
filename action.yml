@@ -26,12 +26,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install opencode
-      shell: bash
-      run: |
-        if ! command -v opencode >/dev/null 2>&1; then
-          npm install -g opencode-ai
-        fi
     - name: Run opencode agent
       shell: bash
       env:
@@ -42,4 +36,7 @@ runs:
         DECA_AGENT_WORKER_TOKEN: ${{ inputs.worker_token }}
         DECA_AGENT_MODEL: ${{ inputs.model }}
         DECA_API_KEY: ${{ inputs.deca_api_key }}
-      run: python "$GITHUB_ACTION_PATH/runner.py"
+        DECA_AGENT_STATE_PASSWORD: ${{ env.DECA_AGENT_STATE_PASSWORD }}
+        SNAPSHOT_REPO: ${{ env.SNAPSHOT_REPO }}
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: bash "$GITHUB_ACTION_PATH/run_containerized.sh"
