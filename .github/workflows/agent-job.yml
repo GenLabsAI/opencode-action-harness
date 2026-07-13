@@ -25,6 +25,16 @@ on:
         required: false
         description: "Model to use"
         default: "deca-2.5-ultra"
+      repo_url:
+        required: false
+        description: "GitHub repository URL"
+      base_branch:
+        required: false
+        description: "Base branch to checkout"
+        default: "main"
+      github_pat:
+        required: false
+        description: "Encrypted GitHub PAT"
 
 jobs:
   run-agent:
@@ -52,6 +62,9 @@ jobs:
           worker_token: ${{ secrets.DECA_AGENT_WORKER_TOKEN }}
           deca_api_key: ${{ github.event.inputs.deca_api_key }}
           model: ${{ github.event.inputs.model }}
+          repo_url: ${{ github.event.inputs.repo_url }}
+          base_branch: ${{ github.event.inputs.base_branch }}
+          github_pat: ${{ github.event.inputs.github_pat }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
