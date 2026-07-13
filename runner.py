@@ -42,6 +42,29 @@ def post_json(url: str, token: str | None, payload: dict[str, Any], method: str 
         raise
 
 
+EVENT_BUFFER: list[dict[str, Any]] = []
+EVENT_LOCK = threading.Lock()
+
+
+def flush_events(api_base_url: str, job_id: str, token: str) -> None:
+    with EVENT_LOCK:
+        if not EVENT_BUFFER:
+            return
+        events = EVENT_BUFFER[:]
+        EVENT_BUFFER.clear()
+    try:
+        post_json(f"{api_base_url.rstrip('/')}/deca-agents/v1/jobs/{job_id}/events", token, {"events": events})
+    except Exception:
+        with EVENT_LOCK:
+            EVENT_BUFFER[:0] = events[-100:]
+
+
+def event_flusher(api_base_url: str, job_id: str, token: str) -> None:
+    while True:
+        flush_events(api_base_url, job_id, token)
+        time.sleep(1)
+
+
 def emit(api_base_url: str, job_id: str, token: str, event_type: str, content: str = "", payload: dict[str, Any] | None = None) -> None:
     event = {
         "event_type": event_type,
@@ -50,10 +73,8 @@ def emit(api_base_url: str, job_id: str, token: str, event_type: str, content: s
         "created_at": now_iso(),
     }
     print(json.dumps(event, ensure_ascii=False), flush=True)
-    try:
-        post_json(f"{api_base_url.rstrip('/')}/deca-agents/v1/jobs/{job_id}/events", token, event)
-    except Exception:
-        pass
+    with EVENT_LOCK:
+        EVENT_BUFFER.append(event)
 
 
 def patch_status(api_base_url: str, job_id: str, token: str, status: str, result: dict[str, Any] | None = None, error: str | None = None) -> None:
@@ -240,6 +261,8 @@ def main() -> int:
             session_id = session_data["id"]
 
         completion_event = threading.Event()
+        # Start event flusher (batches events, 1 request/sec to avoid 429)
+        threading.Thread(target=event_flusher, args=(api_base_url, job_id, token), daemon=True).start()
         # Start event streamer
         threading.Thread(target=event_streamer, args=(api_base_url, job_id, token, completion_event), daemon=True).start()
 
@@ -303,6 +326,7 @@ def main() -> int:
         patch_status(api_base_url, job_id, token, "failed", error=str(exc))
         return 1
     finally:
+        flush_events(api_base_url, job_id, token)
         try:
             if process:
                 process.terminate()

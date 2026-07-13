@@ -39,15 +39,19 @@ def test_post_json_http_error(mock_urlopen):
 
 
 @patch("runner.post_json")
-def test_emit(mock_post_json):
+def test_emit_buffers_and_flushes(mock_post_json):
+    with runner.EVENT_LOCK:
+        runner.EVENT_BUFFER.clear()
     runner.emit("http://test.com", "job1", "token", "test_event", "content", {"a": 1})
+    assert mock_post_json.call_args is None
+    runner.flush_events("http://test.com", "job1", "token")
     args, kwargs = mock_post_json.call_args
     url, token, payload = args
     assert url == "http://test.com/deca-agents/v1/jobs/job1/events"
     assert token == "token"
-    assert payload["event_type"] == "test_event"
-    assert payload["content"] == "content"
-    assert payload["payload"] == {"a": 1}
+    assert payload["events"][0]["event_type"] == "test_event"
+    assert payload["events"][0]["content"] == "content"
+    assert payload["events"][0]["payload"] == {"a": 1}
 
 
 @patch("runner.post_json")
