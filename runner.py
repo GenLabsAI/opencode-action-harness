@@ -160,6 +160,18 @@ def main() -> int:
     token = env_required("DECA_AGENT_WORKER_TOKEN")
     env_required("DECA_API_KEY")
     model = os.environ.get("DECA_AGENT_MODEL", "deca/deca-2.5-ultra").strip()
+    model_aliases = {
+        "mini": "deca/deca-2.5-mini",
+        "pro": "deca/deca-2.5-pro",
+        "ultra": "deca/deca-2.5-ultra",
+        "deca-mini": "deca/deca-2.5-mini",
+        "deca-pro": "deca/deca-2.5-pro",
+        "deca-ultra": "deca/deca-2.5-ultra",
+        "deca-2.5-mini": "deca/deca-2.5-mini",
+        "deca-2.5-pro": "deca/deca-2.5-pro",
+        "deca-2.5-ultra": "deca/deca-2.5-ultra",
+    }
+    model = model_aliases.get(model, model)
     if "/" not in model:
         model = f"deca/{model}"
 
