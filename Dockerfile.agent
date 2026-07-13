@@ -20,4 +20,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY runner.py /agent/harness/runner.py
+COPY git-askpass.sh /agent/harness/git-askpass.sh
+RUN chmod +x /agent/harness/git-askpass.sh \
+    && git config --global user.name "Deca Agent" \
+    && git config --global user.email "deca-agent@genlabs.dev"
 WORKDIR /agent/workspace

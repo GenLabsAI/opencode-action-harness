@@ -31,27 +31,15 @@ if gh release download "$SNAPSHOT_TAG" --repo "$SNAPSHOT_REPO" --pattern "$SNAPS
 else
   echo "No existing encrypted snapshot found. Starting fresh."
   docker build -f "$GITHUB_ACTION_PATH/Dockerfile.agent" -t "$IMAGE" "$GITHUB_ACTION_PATH"
-  
-  # For fresh starts, clone the repo inside the image if requested
-  if [ -n "${TARGET_REPO_URL:-}" ] && [ -n "${TARGET_GITHUB_PAT:-}" ]; then
-    export GITHUB_PAT_DECRYPTED="$(echo "$TARGET_GITHUB_PAT" | openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 -pass env:DECA_AGENT_STATE_PASSWORD)"
-    AUTH_REPO_URL="$(echo "$TARGET_REPO_URL" | sed -E "s|^https://|https://x-access-token:${GITHUB_PAT_DECRYPTED}@|")"
-    echo "Cloning $TARGET_REPO_URL..."
-    # Create a temporary container to clone the repo into the workspace
-    docker run --name "${CONTAINER}-init" -w /agent/workspace "$IMAGE" bash -c "\
-      git clone --branch \"${TARGET_BASE_BRANCH:-main}\" \"$AUTH_REPO_URL\" . && \
-      git checkout -b \"deca-agent/${DECA_AGENT_JOB_ID}\" && \
-      git config user.name \"Deca Agent\" && \
-      git config user.email \"deca-agent@genlabs.dev\""
-    docker commit "${CONTAINER}-init" "$IMAGE"
-    docker rm -f "${CONTAINER}-init" >/dev/null 2>&1 || true
-  fi
 fi
 
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
-# Decrypt DECA_API_KEY
+# Decrypt credentials
 export DECA_API_KEY_DECRYPTED="$(echo "$DECA_API_KEY" | openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 -pass env:DECA_AGENT_STATE_PASSWORD)"
+if [ -n "${TARGET_GITHUB_PAT:-}" ]; then
+  export GITHUB_PAT_DECRYPTED="$(echo "$TARGET_GITHUB_PAT" | openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 -pass env:DECA_AGENT_STATE_PASSWORD)"
+fi
 
 set +e
 docker run --name "$CONTAINER" \
@@ -62,26 +50,15 @@ docker run --name "$CONTAINER" \
   -e DECA_AGENT_WORKER_TOKEN \
   -e DECA_AGENT_MODEL \
   -e DECA_API_KEY="$DECA_API_KEY_DECRYPTED" \
+  -e GITHUB_TOKEN="$GITHUB_PAT_DECRYPTED" \
+  -e GH_TOKEN="$GITHUB_PAT_DECRYPTED" \
+  -e GIT_ASKPASS=/agent/harness/git-askpass.sh \
+  -e GIT_TERMINAL_PROMPT=0 \
   -w /agent/workspace \
   "$IMAGE" \
   python3 /agent/harness/runner.py
 STATUS=$?
 set -e
-
-# Push branch if repo targeting is enabled
-if [ -n "${TARGET_REPO_URL:-}" ] && [ -n "${TARGET_GITHUB_PAT:-}" ] && [ "$STATUS" -eq 0 ]; then
-  export GITHUB_PAT_DECRYPTED="$(echo "$TARGET_GITHUB_PAT" | openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 -pass env:DECA_AGENT_STATE_PASSWORD)"
-  AUTH_REPO_URL="$(echo "$TARGET_REPO_URL" | sed -E "s|^https://|https://x-access-token:${GITHUB_PAT_DECRYPTED}@|")"
-  # Run push in a temporary container against the preserved state
-  docker commit "$CONTAINER" "$STATE_IMAGE"
-  docker run --rm -w /agent/workspace "$STATE_IMAGE" bash -c "\
-    if [[ -n \$(git status --porcelain) ]]; then \
-      git add . && \
-      git commit -m \"feat: updates from Deca Agent (Job ${DECA_AGENT_JOB_ID})\"; \
-    fi && \
-    git remote set-url origin \"$AUTH_REPO_URL\" && \
-    git push origin \"deca-agent/${DECA_AGENT_JOB_ID}\" || true"
-fi
 
 # Revoke DECA_API_KEY on terminal job completion
 if [ "$STATUS" -eq 0 ] || [ "$STATUS" -eq 1 ]; then
