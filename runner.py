@@ -313,10 +313,12 @@ def main() -> int:
         
         if status in ["completed", "resolved"]:
             emit(api_base_url, job_id, token, "result", "completed", result)
+            flush_events(api_base_url, job_id, token)
             patch_status(api_base_url, job_id, token, "completed", result=result)
             return 0
         else:
             emit(api_base_url, job_id, token, "error", f"Task ended with status {status}", result)
+            flush_events(api_base_url, job_id, token)
             patch_status(api_base_url, job_id, token, "failed", result=result, error=f"Task ended with status {status}")
             return 1
 
