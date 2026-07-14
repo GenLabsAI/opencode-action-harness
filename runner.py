@@ -50,13 +50,13 @@ def flush_events(api_base_url: str, job_id: str, token: str) -> None:
     with EVENT_LOCK:
         if not EVENT_BUFFER:
             return
-        events = EVENT_BUFFER[:]
-        EVENT_BUFFER.clear()
+        events = EVENT_BUFFER[:200]  # Flush up to 200 per batch
+        del EVENT_BUFFER[:200]
     try:
         post_json(f"{api_base_url.rstrip('/')}/deca-agents/v1/jobs/{job_id}/events", token, {"events": events})
     except Exception:
         with EVENT_LOCK:
-            EVENT_BUFFER[:0] = events[-100:]
+            EVENT_BUFFER[:0] = events  # Re-buffer all failed events at the front
 
 
 def event_flusher(api_base_url: str, job_id: str, token: str) -> None:
