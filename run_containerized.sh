@@ -42,6 +42,7 @@ if [ -n "${TARGET_GITHUB_PAT:-}" ]; then
 fi
 
 set +e
+: "${GITHUB_PAT_DECRYPTED:=}"
 docker run --name "$CONTAINER" \
   -e DECA_AGENT_JOB_ID \
   -e DECA_AGENT_CHAT_SESSION_ID \
