@@ -1,0 +1,160 @@
+name: "Deca Terminal Session"
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        required: true
+        description: "Terminal relay session ID"
+      relay_url:
+        required: true
+        description: "WSS URL of the relay server (runner endpoint)"
+      session_token:
+        required: true
+        description: "One-time runner auth token"
+      deca_api_key:
+        required: true
+        description: "Deca API key (short-lived, tied to this session)"
+      api_base_url:
+        required: false
+        description: "Deca API base URL for scrollback sync"
+        default: "https://api.genlabs.dev"
+      command:
+        required: false
+        description: "Command to run in PTY"
+        default: "crush"
+      github_pat:
+        required: false
+        description: "Encrypted GitHub PAT (optional)"
+
+jobs:
+  run-terminal:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deca-terminal-${{ github.event.inputs.session_id }}
+      cancel-in-progress: true
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install crush and dependencies
+        run: |
+          npm install -g @charmland/crush
+          pip install websockets aiohttp
+
+      - name: Write crush config
+        run: |
+          mkdir -p ~/.config/crush
+          cat > ~/.config/crush/crush.json <<'EOF'
+          {
+            "providers": {
+              "deca": {
+                "apiKey": "${{ github.event.inputs.deca_api_key }}",
+                "baseUrl": "${{ github.event.inputs.api_base_url }}/deca/v1"
+              }
+            },
+            "model": "deca/deca-2.5-ultra"
+          }
+          EOF
+
+      - name: Restore encrypted state snapshot
+        id: restore
+        env:
+          DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
+          SNAPSHOT_REPO: ${{ github.repository }}
+        run: |
+          SNAPSHOT_ID="$(printf '%s' "${{ github.event.inputs.session_id }}" | sha256sum | cut -c1-32)"
+          SNAPSHOT_TAG="terminal-state-${SNAPSHOT_ID}"
+          SNAPSHOT_DIR="$(mktemp -d)"
+          echo "SNAPSHOT_ID=${SNAPSHOT_ID}" >> $GITHUB_ENV
+          echo "SNAPSHOT_TAG=${SNAPSHOT_TAG}" >> $GITHUB_ENV
+          echo "SNAPSHOT_DIR=${SNAPSHOT_DIR}" >> $GITHUB_ENV
+
+          if gh release download "$SNAPSHOT_TAG" \
+               --repo "$SNAPSHOT_REPO" \
+               --pattern "terminal-state.tar.zst.enc" \
+               --dir "$SNAPSHOT_DIR" --clobber 2>/dev/null; then
+            echo "Found snapshot — decrypting"
+            openssl enc -d -aes-256-cbc -pbkdf2 -salt \
+              -in "$SNAPSHOT_DIR/terminal-state.tar.zst.enc" \
+              -out "$SNAPSHOT_DIR/terminal-state.tar.zst" \
+              -pass env:DECA_AGENT_STATE_PASSWORD
+            zstd -d -q -f "$SNAPSHOT_DIR/terminal-state.tar.zst" \
+              -o "$SNAPSHOT_DIR/terminal-state.tar"
+            tar -xf "$SNAPSHOT_DIR/terminal-state.tar" -C /
+            echo "SNAPSHOT_RESTORED=true" >> $GITHUB_ENV
+          else
+            echo "No snapshot found — fresh workspace"
+            echo "SNAPSHOT_RESTORED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Decrypt GitHub PAT
+        if: ${{ github.event.inputs.github_pat != '' }}
+        env:
+          DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
+        run: |
+          DECRYPTED=$(echo "${{ github.event.inputs.github_pat }}" | \
+            openssl enc -d -aes-256-cbc -pbkdf2 -a -salt -md sha256 \
+            -pass env:DECA_AGENT_STATE_PASSWORD)
+          echo "GH_TOKEN=${DECRYPTED}" >> $GITHUB_ENV
+          git config --global url."https://${DECRYPTED}@github.com/".insteadOf "https://github.com/"
+
+      - name: Run PTY bridge
+        env:
+          DECA_API_KEY: ${{ github.event.inputs.deca_api_key }}
+          TERM: xterm-256color
+        run: |
+          python terminal_runner.py \
+            --relay-url "${{ github.event.inputs.relay_url }}" \
+            --session-token "${{ github.event.inputs.session_token }}" \
+            --api-base-url "${{ github.event.inputs.api_base_url }}" \
+            --deca-api-key "${{ github.event.inputs.deca_api_key }}" \
+            --session-id "${{ github.event.inputs.session_id }}" \
+            --command "${{ github.event.inputs.command }}"
+
+      - name: Save encrypted state snapshot
+        if: always()
+        env:
+          DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
+          SNAPSHOT_REPO: ${{ github.repository }}
+        run: |
+          SNAPSHOT_FILE="terminal-state.tar.zst.enc"
+          SNAPSHOT_PATH="${SNAPSHOT_DIR}/${SNAPSHOT_FILE}"
+
+          # Snapshot key workspace dirs: home, workspace
+          tar -cf "${SNAPSHOT_DIR}/terminal-state.tar" \
+            --ignore-failed-read \
+            -C / \
+            home/runner/.config/crush \
+            home/runner/.local \
+            agent/workspace 2>/dev/null || true
+
+          zstd -q -f "${SNAPSHOT_DIR}/terminal-state.tar" \
+            -o "${SNAPSHOT_DIR}/terminal-state.tar.zst"
+          openssl enc -aes-256-cbc -pbkdf2 -salt \
+            -in "${SNAPSHOT_DIR}/terminal-state.tar.zst" \
+            -out "$SNAPSHOT_PATH" \
+            -pass env:DECA_AGENT_STATE_PASSWORD
+
+          gh release delete "$SNAPSHOT_TAG" --repo "$SNAPSHOT_REPO" --yes 2>/dev/null || true
+          gh release create "$SNAPSHOT_TAG" "$SNAPSHOT_PATH" \
+            --repo "$SNAPSHOT_REPO" \
+            --title "$SNAPSHOT_TAG" \
+            --notes "Encrypted terminal state snapshot" \
+            --latest=false
