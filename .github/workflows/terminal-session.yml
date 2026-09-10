@@ -78,6 +78,7 @@ jobs:
         env:
           DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
           SNAPSHOT_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SNAPSHOT_ID="$(printf '%s' "${{ github.event.inputs.session_id }}" | sha256sum | cut -c1-32)"
           SNAPSHOT_TAG="terminal-state-${SNAPSHOT_ID}"
@@ -133,6 +134,7 @@ jobs:
         env:
           DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
           SNAPSHOT_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SNAPSHOT_FILE="terminal-state.tar.zst.enc"
           SNAPSHOT_PATH="${SNAPSHOT_DIR}/${SNAPSHOT_FILE}"
