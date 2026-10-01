@@ -15,7 +15,7 @@ RUN apt-get update \
         python3-pip \
         python3-venv \
         zstd \
-    && npm install -g opencode-ai \
+    && curl -fsSL https://raw.githubusercontent.com/charmbracelet/crush/main/install.sh | bash \
     && mkdir -p /agent/workspace /agent/home \
     && rm -rf /var/lib/apt/lists/*
 
