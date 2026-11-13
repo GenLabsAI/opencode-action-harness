@@ -120,7 +120,12 @@ async def main(url: str):
                                                           "content": {"type": "text", "text": part}}}})
                 await send({"jsonrpc": "2.0", "id": mid, "result": {"stopReason": "end_turn"}})
                 await ws.send(bytes([MSG_EXIT, 0]))
-                print("bridge: prompt complete, exiting", flush=True)
+                # Grace period: the relay tears down the browser side when
+                # the runner goes away, so linger to let Star drain every
+                # frame before the session ends.
+                print("bridge: prompt complete, lingering 20s for drain", flush=True)
+                await asyncio.sleep(20)
+                print("bridge: exiting")
                 return
             else:
                 await send({"jsonrpc": "2.0", "id": mid,
