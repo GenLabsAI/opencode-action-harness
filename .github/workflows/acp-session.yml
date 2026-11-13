@@ -1,0 +1,53 @@
+# Deca ACP Session — cloud agent that speaks ACP over the terminal relay.
+#
+# Same relay pairing as terminal-session.yml (wss://.../terminal/runner/<id>),
+# but instead of a PTY running crush, acp_bridge.py acts as the ACP agent:
+# it reads the acp_init config frame Star sends over the relay
+# ({prompt, model, base_url, api_key}), calls that model for inference,
+# and streams the reply back as ACP session/update frames.
+#
+# Model credentials travel Star -> relay -> runner over WSS and never
+# appear in workflow inputs or logs. No repo secrets required.
+name: "Deca ACP Session"
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        required: true
+        description: "Relay session ID (pairs with the browser viewer)"
+      relay_url:
+        required: true
+        description: "WSS URL of the relay server (runner endpoint)"
+      session_token:
+        required: false
+        description: "One-time runner auth token (reserved, relay does not check it yet)"
+        default: ""
+
+jobs:
+  run-acp:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deca-acp-${{ github.event.inputs.session_id }}
+      cancel-in-progress: true
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bridge dependencies
+        run: pip install websockets requests
+
+      - name: Run ACP bridge
+        run: |
+          python acp_bridge.py "${{ github.event.inputs.relay_url }}"
