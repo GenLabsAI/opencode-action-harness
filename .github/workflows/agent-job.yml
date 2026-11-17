@@ -1,0 +1,63 @@
+name: "Deca Agent Job"
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        description: "Deca agent job id"
+      chat_session_id:
+        required: true
+        description: "Deca chat session id"
+      task:
+        required: true
+        description: "Task for opencode"
+      api_base_url:
+        required: true
+        description: "API base URL"
+      deca_api_key:
+        required: true
+        description: "Deca API key for the agent"
+      model:
+        required: false
+        description: "Model to use"
+        default: "deca-2.5-ultra"
+      github_pat:
+        required: false
+        description: "Encrypted GitHub PAT"
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deca-agent-state-${{ github.event.inputs.chat_session_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout harness action
+        uses: actions/checkout@v4
+        with:
+          repository: 'GenLabsAI/opencode-action-harness'
+          path: '.deca-harness'
+          # This allows us to use the action defined in the repo locally
+
+      - name: Run agent harness
+        uses: ./.deca-harness
+        with:
+          job_id: ${{ github.event.inputs.job_id }}
+          chat_session_id: ${{ github.event.inputs.chat_session_id }}
+          task: ${{ github.event.inputs.task }}
+          api_base_url: ${{ github.event.inputs.api_base_url }}
+          worker_token: ${{ secrets.DECA_AGENT_WORKER_TOKEN }}
+          deca_api_key: ${{ github.event.inputs.deca_api_key }}
+          model: ${{ github.event.inputs.model }}
+          github_pat: ${{ github.event.inputs.github_pat }}
+          seal_key: ${{ secrets.SEAL_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DECA_AGENT_STATE_PASSWORD: ${{ secrets.DECA_AGENT_STATE_PASSWORD }}
+          SNAPSHOT_REPO: ${{ github.repository }}

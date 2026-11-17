@@ -1,0 +1,50 @@
+name: "Run opencode agent"
+description: "Runs opencode for a task and streams JSON events to the Deca Agent Jobs API"
+inputs:
+  job_id:
+    required: true
+    description: "Deca agent job id"
+  chat_session_id:
+    required: false
+    description: "Deca chat session id"
+  task:
+    required: true
+    description: "Task for opencode"
+  api_base_url:
+    required: true
+    description: "API base URL"
+  worker_token:
+    required: true
+    description: "Worker callback token"
+  deca_api_key:
+    required: true
+    description: "Deca API key for the agent"
+  model:
+    required: false
+    description: "Model to use"
+    default: "deca-2.5-ultra"
+  github_pat:
+    required: false
+    description: "Encrypted GitHub PAT"
+  seal_key:
+    required: false
+    description: "Secret that unlocks the sealed harness payload"
+runs:
+  using: "composite"
+  steps:
+    - name: Run opencode agent
+      shell: bash
+      env:
+        DECA_AGENT_JOB_ID: ${{ inputs.job_id }}
+        DECA_AGENT_CHAT_SESSION_ID: ${{ inputs.chat_session_id }}
+        DECA_AGENT_TASK: ${{ inputs.task }}
+        DECA_AGENT_API_BASE_URL: ${{ inputs.api_base_url }}
+        DECA_AGENT_WORKER_TOKEN: ${{ inputs.worker_token }}
+        DECA_AGENT_MODEL: ${{ inputs.model }}
+        DECA_API_KEY: ${{ inputs.deca_api_key }}
+        TARGET_GITHUB_PAT: ${{ inputs.github_pat }}
+        DECA_AGENT_STATE_PASSWORD: ${{ env.DECA_AGENT_STATE_PASSWORD }}
+        SNAPSHOT_REPO: ${{ env.SNAPSHOT_REPO }}
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        SEAL_KEY: ${{ inputs.seal_key }}
+      run: bash "$GITHUB_ACTION_PATH/run_containerized.sh"
